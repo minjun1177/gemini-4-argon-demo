@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D Retro Arcade Cabinet (Three.js + 2D CRT Game)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      width: 100vw; height: 100vh; overflow: hidden;
+      background: #05050a; font-family: 'Courier New', monospace; color: #fff;
+    }
+    #webgl-container { width: 100%; height: 100%; display: block; }
+    .hud-top {
+      position: fixed; top: 14px; left: 16px; right: 16px;
+      display: flex; justify-content: space-between; align-items: flex-start;
+      pointer-events: none; z-index: 10; flex-wrap: wrap; gap: 10px;
+    }
+    .brand-panel {
+      background: rgba(10, 12, 28, 0.85);
+      border: 1px solid rgba(0, 247, 255, 0.5);
+      box-shadow: 0 0 18px rgba(0, 247, 255, 0.25);
+      padding: 10px 16px; border-radius: 10px; pointer-events: auto;
+      backdrop-filter: blur(6px);
+    }
+    .brand-title {
+      font-size: 17px; font-weight: 900; letter-spacing: 1.5px;
+      color: #00f7ff; text-shadow: 0 0 8px #00f7ff; margin-bottom: 3px;
+    }
+    .brand-sub { font-size: 12px; color: #cbd5e1; }
+    .camera-controls { display: flex; gap: 8px; flex-wrap: wrap; pointer-events: auto; }
+    .ui-btn {
+      background: rgba(16, 18, 38, 0.88); color: #e0f2fe;
+      border: 1px solid rgba(255, 0, 128, 0.55);
+      padding: 8px 13px; border-radius: 8px; font-family: inherit;
+      font-size: 12px; font-weight: bold; cursor: pointer; transition: 0.15s;
+    }
+    .ui-btn:hover {
+      background: rgba(255, 0, 128, 0.3); border-color: #ff2a85;
+      box-shadow: 0 0 12px rgba(255, 0, 128, 0.5);
+    }
+    .ui-btn.active {
+      background: linear-gradient(135deg, #ff007f, #7928ca);
+      border-color: #00f7ff; color: #fff;
+      box-shadow: 0 0 15px rgba(0, 247, 255, 0.6);
+    }
+    .ui-btn.coin-btn {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      border-color: #fde68a; color: #111;
+      box-shadow: 0 0 14px rgba(245, 158, 11, 0.5);
+    }
+    .hud-bottom {
+      position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+      background: rgba(10, 12, 28, 0.86);
+      border: 1px solid rgba(0, 247, 255, 0.35);
+      padding: 9px 18px; border-radius: 12px;
+      display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+      justify-content: center; z-index: 10; pointer-events: auto;
+      backdrop-filter: blur(6px); max-width: 96vw;
+    }
+    .key-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #cbd5e1; }
+    .kbd {
+      background: #1e293b; border: 1px solid #475569; border-bottom: 3px solid #0f172a;
+      padding: 2px 6px; border-radius: 4px; color: #38bdf8; font-weight: bold; font-size: 11px;
+    }
+    .kbd.red { color: #fb7185; }
+    .kbd.blue { color: #60a5fa; }
+    .kbd.yellow { color: #facc15; }
+    .quick-actions { display: flex; gap: 6px; border-left: 1px solid rgba(255,255,255,0.18); padding-left: 12px; }
+    .mini-btn {
+      padding: 5px 9px; font-size: 11px; border-radius: 6px; border: 1px solid #475569;
+      background: #1e293b; color: #fff; cursor: pointer; font-family: inherit; font-weight: bold;
+    }
+    .mini-btn.start { background: #ca8a04; border-color: #fde047; color: #000; }
+    .mini-btn.btn-a { background: #e11d48; border-color: #fda4af; }
+    .mini-btn.btn-b { background: #2563eb; border-color: #93c5fd; }
+    .mini-btn.menu { background: #4f46e5; border-color: #a5b4fc; }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+<div class="hud-top">
+  <div class="brand-panel">
+    <div class="brand-title">NEON ARCADE 1984 (3D CABINET)</div>
+    <div class="brand-sub">Three.js 3D 아케이드 게임기 + 내부 실시간 2D CRT 멀티 게임 (3-IN-1)</div>
+  </div>
+  <div class="camera-controls">
+    <button class="ui-btn coin-btn" id="btn-insert-coin">[C] 코인 투입 (25c)</button>
+    <button class="ui-btn active" data-cam="arcade">플레이 뷰</button>
+    <button class="ui-btn" data-cam="screen">화면 집중 뷰</button>
+    <button class="ui-btn" data-cam="full">기기 전체 뷰</button>
+    <button class="ui-btn" data-cam="orbit">자유 회전(마우스)</button>
+    <button class="ui-btn" id="btn-sound">사운드: ON</button>
+  </div>
+</div>
+<div class="hud-bottom">
+  <div class="key-item"><span class="kbd">WASD</span>/<span class="kbd">방향키</span> 조이스틱</div>
+  <div class="key-item"><span class="kbd red">Space</span>/<span class="kbd red">Z</span> A버튼(발사/선택)</div>
+  <div class="key-item"><span class="kbd blue">X</span>/<span class="kbd blue">Shift</span> B버튼(폭탄/부스트)</div>
+  <div class="key-item"><span class="kbd yellow">C</span> 코인 투입</div>
+  <div class="key-item"><span class="kbd yellow">Enter</span> START</div>
+  <div class="key-item"><span class="kbd">M</span> 메뉴 복귀</div>
+  <div class="quick-actions">
+    <button class="mini-btn start" id="pad-start">1P START</button>
+    <button class="mini-btn btn-a" id="pad-a">A 버튼</button>
+    <button class="mini-btn btn-b" id="pad-b">B 버튼</button>
+    <button class="mini-btn menu" id="pad-menu">게임 변경</button>
+  </div>
+</div>
+<div id="webgl-container"></div>
+<script src="./game2d.js"></script>
+<script src="./arcade3d.js"></script>
+<script type="module">
+  import * as THREE from 'three';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+  window.startArcade3D(THREE, OrbitControls);
+</script>
+</body>
+</html>
